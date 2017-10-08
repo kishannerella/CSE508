@@ -330,8 +330,8 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
    //subsecond_t millisec = ts->tv_usec;
    u_char* m;
 
-   printf("%4d-%02d-%02d %02d:%02d:%02d.%06d ",(1900 + t->tm_year), t->tm_mon, t->tm_mday, 
-          t->tm_hour, t->tm_min, t->tm_sec, (int)header->ts.tv_usec); 
+   printf("%4d-%02d-%02d %02d:%02d:%02d.%06d ",(1900 + t->tm_year), (t->tm_mon + 1), 
+          t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, (int)header->ts.tv_usec); 
 
    //printf("time - %s\n", date);
    //printf("\nPacket number %d:\n", count);
@@ -498,7 +498,12 @@ int main(int argc, char **argv)
    printf("Filter expression: %s\n", filter_exp);
 
    /* open capture device */
-   handle = pcap_open_live(dev, SNAP_LEN, 1, 1000, errbuf);
+
+   if (file_flag)
+      handle = pcap_open_offline(file_name, errbuf);
+   else
+      handle = pcap_open_live(dev, SNAP_LEN, 1, 1000, errbuf);
+
    if (handle == NULL) {
       fprintf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
       exit(EXIT_FAILURE);
