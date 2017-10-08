@@ -97,6 +97,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <time.h>
 #include <ctype.h>
 #include <errno.h>
 #include <sys/types.h>
@@ -324,8 +325,15 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
    int size_tcp;
    int size_udp;
    int size_payload;
+   const time_t* secs = &(header->ts.tv_sec);
+   struct tm* t = localtime(secs);
+   //subsecond_t millisec = ts->tv_usec;
    u_char* m;
- 
+
+   printf("%4d-%02d-%02d %02d:%02d:%02d.%06d ",(1900 + t->tm_year), t->tm_mon, t->tm_mday, 
+          t->tm_hour, t->tm_min, t->tm_sec, (int)header->ts.tv_usec); 
+
+   //printf("time - %s\n", date);
    //printf("\nPacket number %d:\n", count);
    count++;
    
@@ -340,6 +348,7 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
       return;
    }
 
+   
    /* print source and destination IP addresses */
    
    /* determine protocol */   
@@ -410,7 +419,8 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
     */
    if (size_payload > 0) {
       //printf("   Payload (%d bytes):\n", size_payload);
-      print_payload(payload, size_payload);
+      // TODOKISHAN - uncomment this
+     // print_payload(payload, size_payload);
    }
 
    return;
