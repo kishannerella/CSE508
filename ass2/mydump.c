@@ -1,5 +1,5 @@
 /*
- * sniffex.c
+ * mydump.c
  *
  * Sniffer example of TCP/IP packet capture using libpcap.
  * 
@@ -88,9 +88,6 @@
  */
 
 #define APP_NAME      "mydump"
-#define APP_DESC      "Sniffer example using libpcap"
-#define APP_COPYRIGHT   "Copyright (c) 2005 The Tcpdump Group"
-#define APP_DISCLAIMER   "THERE IS ABSOLUTELY NO WARRANTY FOR THIS PROGRAM."
 
 #include <pcap.h>
 #include <stdio.h>
@@ -117,6 +114,8 @@
 #define ETHER_ADDR_LEN   6
 
 #define ICMP_HEADER_SIZE 8
+
+#define ETHER_TYPE_IP   0x0800
 
 /* Ethernet header */
 struct sniff_ethernet {
@@ -183,23 +182,9 @@ void print_payload(const u_char *payload, int len);
 
 void print_hex_ascii_line(const u_char *payload, int len, int offset);
 
-void print_app_banner(void);
-
 void print_app_usage(void);
 
-void print_app_banner(void)
-{
-
-   printf("%s - %s\n", APP_NAME, APP_DESC);
-   printf("%s\n", APP_COPYRIGHT);
-   printf("%s\n", APP_DISCLAIMER);
-   printf("\n");
-
-   return;
-}
-
-void
-print_app_usage(void)
+void print_app_usage(void)
 {
 
    printf("Usage: %s [-i <interface>] [-r <filename>] [-s <string>] [BPF filter]\n", APP_NAME);
@@ -263,8 +248,7 @@ void print_hex_ascii_line(const u_char *payload, int len, int offset)
 /*
  * print packet payload data (avoid printing binary data)
  */
-void
-print_payload(const u_char *payload, int len)
+void print_payload(const u_char *payload, int len)
 {
 
    int len_rem = len;
@@ -305,11 +289,43 @@ print_payload(const u_char *payload, int len)
    return;
 }
 
+void get_time_str(const struct pcap_pkthdr *header, char* str)
+{
+   const time_t* secs = &(header->ts.tv_sec);
+   struct tm* t = localtime(secs);
+
+   /* Print time in the required format */
+   sprintf(str, "%4d-%02d-%02d %02d:%02d:%02d.%06d ",(1900 + t->tm_year), (t->tm_mon + 1), 
+           t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, (int)header->ts.tv_usec); 
+
+}
+
+void get_ether_str(struct sniff_ethernet *ethernet, bpf_u_int32 pktlen, char* str)
+{
+   u_char* m;
+   char temp[1000];
+
+   *str = '\0';
+   /* Print source and destination MAC address */ 
+   m = ethernet->ether_shost; 
+   sprintf(temp, "%02x:%02x:%02x:%02x:%02x:%02x -> ", 
+           m[0], m[1], m[2], m[3], m[4], m[5]);
+   strcat(str, temp);
+   m = ethernet->ether_dhost; 
+   sprintf(temp, "%02x:%02x:%02x:%02x:%02x:%02x ", 
+           m[0], m[1], m[2], m[3], m[4], m[5]);
+   strcat(str, temp);
+   sprintf(temp, "type 0x%x ", ntohs(ethernet->ether_type));
+   strcat(str, temp);
+   sprintf(temp, "len %u ", pktlen);
+   strcat(str, temp);
+
+}
+
 /*
  * dissect/print packet
  */
-void
-got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
+void got_packet(u_char *pattern, const struct pcap_pkthdr *header, const u_char *packet)
 {
 
    static int count = 1;                   /* packet counter */
@@ -325,105 +341,101 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
    int size_tcp;
    int size_udp;
    int size_payload;
-   const time_t* secs = &(header->ts.tv_sec);
-   struct tm* t = localtime(secs);
-   //subsecond_t millisec = ts->tv_usec;
-   u_char* m;
+   int i;
+   char pktinfo[1000] = "";
+   char temp[100000] = "";
+   char *ch;
 
-   printf("%4d-%02d-%02d %02d:%02d:%02d.%06d ",(1900 + t->tm_year), (t->tm_mon + 1), 
-          t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, (int)header->ts.tv_usec); 
+   /* FORMAT -
+    * 2016-02-16 15:04:13.064632 D0:C7:89:A9:C7:40 -> 00:06:5B:FE:42:1A 
+    * type 0x800 len 74 192.168.0.1:2365 -> 192.168.1.2:80 TCP
+    */
 
-   //printf("time - %s\n", date);
-   //printf("\nPacket number %d:\n", count);
    count++;
-   
+   get_time_str(header, temp);
+   strcat(pktinfo, temp);
+
    /* define ethernet header */
    ethernet = (struct sniff_ethernet*)(packet);
-   
-   /* define/compute ip header offset */
-   ip = (struct sniff_ip*)(packet + SIZE_ETHERNET);
-   size_ip = IP_HL(ip)*4;
-   if (size_ip < 20) {
-      printf("   * Invalid IP header length: %u bytes\n", size_ip);
-      return;
-   }
 
-   
-   /* print source and destination IP addresses */
-   
-   /* determine protocol */   
-   switch(ip->ip_p) {
-      case IPPROTO_TCP:
-         //printf("   Protocol: TCP\n");
-         break;
-      case IPPROTO_UDP:
-         //printf("   Protocol: UDP\n");
-         break;
-      case IPPROTO_ICMP:
-         //printf("   Protocol: ICMP\n");
-         break;
-      case IPPROTO_IP:
-         printf("   Protocol: IP\n");
-         return;
-      default:
-         printf("   Protocol: unknown\n");
-         return;
+   get_ether_str(ethernet, header->len, temp);
+   strcat(pktinfo, temp);
+
+   /* If this is not an IP packet, print everything after ethernet header */
+   if (ntohs(ethernet->ether_type) != ETHER_TYPE_IP) {
+      payload = (u_char *)(packet + SIZE_ETHERNET);
+      size_payload = header->len - SIZE_ETHERNET;
    }
-   
-   /*
-    *  OK, this packet is TCP.
-    */
+   else{
+      /* define/compute ip header offset */
+      ip = (struct sniff_ip*)(packet + SIZE_ETHERNET);
+      size_ip = IP_HL(ip)*4;
+      
   
-   /*
-    2016-02-16 15:04:13.064632 D0:C7:89:A9:C7:40 -> 00:06:5B:FE:42:1A type 0x800 len 74
-192.168.0.1:2365 -> 192.168.1.2:80 TCP
-    */ 
-   /* define/compute tcp header offset */
+      if (ip->ip_p == IPPROTO_TCP){
+         tcp = (struct sniff_tcp*)(packet + SIZE_ETHERNET + size_ip);
+         size_tcp = TH_OFF(tcp)*4;
 
-  
-   m = ethernet->ether_shost; 
-   printf("%02x:%02x:%02x:%02x:%02x:%02x -> ", m[0], m[1], m[2], m[3], m[4], m[5]);
-   m = ethernet->ether_dhost; 
-   printf("%02x:%02x:%02x:%02x:%02x:%02x ", m[0], m[1], m[2], m[3], m[4], m[5]);
-   printf("type 0x%x ", ntohs(ethernet->ether_type));
-   printf("len %u ", ntohs(ip->ip_len));
+         payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_tcp);
+         size_payload = ntohs(ip->ip_len) - (size_ip + size_tcp);
 
-   if (ip->ip_p == IPPROTO_TCP){
-      tcp = (struct sniff_tcp*)(packet + SIZE_ETHERNET + size_ip);
-      size_tcp = TH_OFF(tcp)*4;
-      printf("%s:%d -> ", inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
-      printf("%s:%d TCP\n", inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
-      payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_tcp);
-      size_payload = ntohs(ip->ip_len) - (size_ip + size_tcp);
-   }else if (ip->ip_p == IPPROTO_UDP){
-      udp = (struct sniff_udp*)(packet + SIZE_ETHERNET + size_ip);
-      size_udp = sizeof(struct sniff_udp);
-      printf("%s:%d -> ", inet_ntoa(ip->ip_src), ntohs(udp->uh_sport));
-      printf("%s:%d UDP\n", inet_ntoa(ip->ip_dst), ntohs(udp->uh_dport));
-      payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_udp);
-      size_payload = ntohs(ip->ip_len) - (size_ip + size_udp);
-   }else if (ip->ip_p == IPPROTO_ICMP){
-      printf("%s -> ", inet_ntoa(ip->ip_src));
-      printf("%s ICMP\n", inet_ntoa(ip->ip_dst));
-      payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + ICMP_HEADER_SIZE);
-      size_payload = ntohs(ip->ip_len) - (size_ip + ICMP_HEADER_SIZE);
+         sprintf(temp, "%s:%d -> ", inet_ntoa(ip->ip_src), ntohs(tcp->th_sport));
+         strcat(pktinfo, temp);
+         sprintf(temp, "%s:%d TCP", inet_ntoa(ip->ip_dst), ntohs(tcp->th_dport));
+         strcat(pktinfo, temp);
+      }else if (ip->ip_p == IPPROTO_UDP){
+         udp = (struct sniff_udp*)(packet + SIZE_ETHERNET + size_ip);
+         size_udp = sizeof(struct sniff_udp);
+
+         payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_udp);
+         size_payload = ntohs(ip->ip_len) - (size_ip + size_udp);
+
+         sprintf(temp, "%s:%d -> ", inet_ntoa(ip->ip_src), ntohs(udp->uh_sport));
+         strcat(pktinfo, temp);
+         sprintf(temp, "%s:%d UDP", inet_ntoa(ip->ip_dst), ntohs(udp->uh_dport));
+         strcat(pktinfo, temp);
+      }else if (ip->ip_p == IPPROTO_ICMP){
+         payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + ICMP_HEADER_SIZE);
+         size_payload = ntohs(ip->ip_len) - (size_ip + ICMP_HEADER_SIZE);
+
+         sprintf(temp, "%s -> ", inet_ntoa(ip->ip_src));
+         strcat(pktinfo, temp);
+         sprintf(temp, "%s ICMP", inet_ntoa(ip->ip_dst));
+         strcat(pktinfo, temp);
+      }else{
+         payload = (u_char *)(packet + SIZE_ETHERNET + size_ip);
+         size_payload = ntohs(ip->ip_len) - (size_ip);
+
+         sprintf(temp, "%s -> ", inet_ntoa(ip->ip_src));
+         strcat(pktinfo, temp);
+         sprintf(temp, "%s OTHER", inet_ntoa(ip->ip_dst));
+         strcat(pktinfo, temp);
+      }
    }
-   
-   /* define/compute tcp payload (segment) offset */
-   
-   /* compute tcp payload (segment) size */
-   
+
+   /* Search for the pattern in the payload and skip the packet if present */
+   if (pattern){
+      ch = payload;
+      for(i = 0; i < size_payload; i++) {
+         if (isprint(*ch))
+            temp[i] = *ch;
+         else
+            temp[i] = '.';
+         ch++;
+      }
+      temp[i] = '\0';
+
+      if (!strstr(temp, pattern))
+         return;
+   }
+
    /*
-    * Print payload data; it might be binary, so don't just
-    * treat it as a string.
+    * Print Packet info and payload data; 
     */
+   puts(pktinfo);
    if (size_payload > 0) {
-      //printf("   Payload (%d bytes):\n", size_payload);
-      // TODOKISHAN - uncomment this
-     // print_payload(payload, size_payload);
+     print_payload(payload, size_payload);
    }
-
-   return;
 }
 
 int main(int argc, char **argv)
@@ -437,13 +449,12 @@ int main(int argc, char **argv)
    struct bpf_program fp;         /* compiled filter program (expression) */
    bpf_u_int32 mask;         /* subnet mask */
    bpf_u_int32 net;         /* ip */
-   int num_packets = 10;         /* number of packets to capture */
 
    int interface_flag = 0;
    int file_flag = 0;
    int search_flag = 0;
    char* file_name;
-   char* search_string;
+   char* search_string = NULL;
    int opt;
    int i, filter_pos;   
    //print_app_banner();
@@ -492,13 +503,7 @@ int main(int argc, char **argv)
       mask = 0;
    }
 
-   /* print capture info */
-   printf("Device: %s\n", dev);
-   printf("Number of packets: %d\n", num_packets);
-   printf("Filter expression: %s\n", filter_exp);
-
    /* open capture device */
-
    if (file_flag)
       handle = pcap_open_offline(file_name, errbuf);
    else
@@ -530,7 +535,7 @@ int main(int argc, char **argv)
    }
 
    /* now we can set our callback function */
-   pcap_loop(handle, num_packets, got_packet, NULL);
+   pcap_loop(handle, -1, got_packet, search_string);
 
    /* cleanup */
    pcap_freecode(&fp);
