@@ -1,0 +1,40 @@
+******************************* INPUT *****************************************
+Usage: mydump [-i <interface>] [-r <filename>] [-s <string>] [BPF filter]
+Example : sudo ./mydump -i eth0 -s HTTP tcp
+
+* Running  'make' would produce mydump executable.
+* -i or -r is mandatory.
+* Only one of -i and -r must be given.
+* BPF filter MUST be given at the end. The other options can be provided
+  in any order.
+
+******************************* IMPLEMENTATION ********************************
+- I built my code on top of the reference given as a part of assignment.
+
+- The packet is printed with packet information on line 1 and the payload on
+  the successive lines. The first line is of the following format
+  <TIMESTAMP> <HOST_MAC> -> <DEST_MAC> type <ETHER_TYPE> len <PACKET_LEN> \
+  [<SRC_IP>[:SRCPORT] -> <DST_IP>[:DESTPORT] <IP_TYPE> ]
+
+- If it is not an IP packet, the above line till packet length is printed.
+
+- If it is an IP packet, the IP addresses are also printed along with the
+  transport level protocol type (TCP, UDP, ICMP or OTHER).
+
+- If a string is passed with the '-s' option, only packets containing the
+  string in their payload are printed.
+
+- Depending on whether option '-i' or '-r' is provided, the code calls
+  the pcap api to open a live connection or an offline connection. The
+  BPF filter is set and a function(got_packet) is registered with pcap
+  layer to process the packet once it is captured.
+
+- The got_packet() function checks for ether_type in the packet. If it
+  is not IP, we consider rest of the packet as the payload. If it is IP,
+  we parse further to check if it is a TCP, UDP, ICMP or any other packet.
+  If it is TCP, UDP or ICMP more information about the packet is displayed.
+  Finally, if a pattern is specified with '-s' option, we print the packet
+  only if the pattern in present in the payload.
+
+- An example output example.txt is also submitted which is the output of
+  mydump -i eth0

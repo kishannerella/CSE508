@@ -495,19 +495,21 @@ int main(int argc, char **argv)
       strcat(filter_exp, argv[i]);
    }
 
-   /* get network number and mask associated with capture device */
-   if (pcap_lookupnet(dev, &net, &mask, errbuf) == -1) {
-      fprintf(stderr, "Couldn't get netmask for device %s: %s\n",
-          dev, errbuf);
-      net = 0;
-      mask = 0;
-   }
-
    /* open capture device */
    if (file_flag)
       handle = pcap_open_offline(file_name, errbuf);
    else
+   {
+      /* get network number and mask associated with capture device */
+      if (pcap_lookupnet(dev, &net, &mask, errbuf) == -1) {
+         fprintf(stderr, "Couldn't get netmask for device %s: %s\n",
+             dev, errbuf);
+         net = 0;
+         mask = 0;
+      }
+
       handle = pcap_open_live(dev, SNAP_LEN, 1, 1000, errbuf);
+   }
 
    if (handle == NULL) {
       fprintf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
