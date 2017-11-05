@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 /*
  * pbproxy [-l port] -k keyfile destination port
  */
@@ -88,6 +89,8 @@ int main(int argc, char **argv)
    if (optind < argc)
    {
       destaddr = argv[optind];
+      if (strcmp(destaddr, "localhost") == 0)
+         strcpy(destaddr,"127.0.0.1");
    }
    else
    {
@@ -125,6 +128,9 @@ int main(int argc, char **argv)
    }
 
    printf("keyfile - %s, destip = %s, lport = %d, dport = %d\n", keyfile, destaddr, lport, dport);
+
+   /********* Input parsing done *************/
+
 
    if (client)
    {
