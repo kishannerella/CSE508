@@ -12,7 +12,7 @@
  */
 
 
-#define MAX_BUFFER_SIZE 1024
+#define MAX_BUFFER_SIZE 10
 
 void print_app_usage()
 {
@@ -133,7 +133,7 @@ int main(int argc, char **argv)
       struct sockaddr_in server_addr ; 
       fd_set dset;
 
-      if ( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+      if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
       {
          exit_perr("Unable to create socket");
       }
@@ -144,17 +144,9 @@ int main(int argc, char **argv)
       server_addr.sin_addr.s_addr = inet_addr(destaddr);
       server_addr.sin_port = htons(dport);
    
-      //printf("addr - %x\n", server_addr.sin_addr.s_addr);
-   //   if (inet_pton(AF_INET, destaddr, &server_addr.sin_addr) <=0)
-   //      exit_perr("Invalid address");
-   
       if (connect(sock, (const struct sockaddr*)&server_addr, sizeof(server_addr)))
          exit_perr("Connection failed");
    
-      char* hello = "Hello from client";
-   
-      fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL) | O_NONBLOCK);
-      fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK);
       while (1){
          FD_ZERO(&dset);
          FD_SET(STDIN_FILENO, &dset);
@@ -163,62 +155,21 @@ int main(int argc, char **argv)
    
          if (FD_ISSET(sock, &dset))
          {
-            //strcpy(buffer, "Selecting 1\n");
-            //write(STDOUT_FILENO, buffer, strlen(buffer));
-            while(1)
-            {
-               bytes = read(sock, buffer, MAX_BUFFER_SIZE);
-               if (bytes > 0)
-               {
-                  /*FILE* fp = fopen("/tmp/a", "a"); 
-                  fprintf(fp,"bytes - %d\n", bytes);
-                  fprintf(fp,"%s\n", buffer);
-                  fclose(fp);*/
-                  write(STDOUT_FILENO, buffer, bytes);
-               }
-               if (bytes < MAX_BUFFER_SIZE)
-               {
-                  //strcpy(buffer, "Breaking 1\n");
-                  //write(STDOUT_FILENO, buffer, strlen(buffer));
-                  //printf("Breaking 1\n");
-                  break;
-               }
-            }
-            //printf("%c\n", buffer[0]);
+            bytes = read(sock, buffer, MAX_BUFFER_SIZE);
+            if (bytes == 0)
+               break;
+            write(STDOUT_FILENO, buffer, bytes);
          }
    
          if (FD_ISSET(STDIN_FILENO, &dset))
          {
-            //strcpy(buffer, "Selecting 2\n");
-            //write(STDOUT_FILENO, buffer, strlen(buffer));
-            while(1)
-            {
-               bytes = read(STDIN_FILENO, buffer, MAX_BUFFER_SIZE);
-               if (bytes > 0)
-               { 
-                  /*FILE* fp = fopen("/tmp/b", "a"); 
-                  fprintf(fp,"bytes - %d\n", bytes);
-                  fprintf(fp,"%s\n", buffer);
-                  fclose(fp);
-                  */
-                  //write(STDOUT_FILENO, buffer, bytes);
-                  write(sock, buffer, bytes);
-               }
-               if (bytes < MAX_BUFFER_SIZE)
-               {
-                  strcpy(buffer, "Breaking 2\n");
-                  //write(STDOUT_FILENO, buffer, strlen(buffer));
-                  //printf("Breaking 2\n");
-                  break;
-               }
+            bytes = read(STDIN_FILENO, buffer, MAX_BUFFER_SIZE);
+            if (bytes == 0)
+            { 
+               break;
             }
+            write(sock, buffer, bytes);
          }
-         /*
-         else
-         {
-            strcpy(buffer,"Something bad happend\n");
-            write(STDOUT_FILENO, buffer, strlen(buffer));
-         }*/
       }
       close(sock);
    }
@@ -228,8 +179,11 @@ int main(int argc, char **argv)
       int len;
       int bytes;
       struct sockaddr_in server_addr ; 
+      int ps_sock; // proxy server sock
+      struct sockaddr_in ps_server_addr ; 
       fd_set dset;
-      if ( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+
+      if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
       {
          exit_perr("Unable to create socket");
       }
@@ -250,15 +204,13 @@ int main(int argc, char **argv)
       if (listen(sock, 1) < 0)
          exit_perr("Listen failed");
    
-      while(1){
-   
+      while(1)
+      {
          if ((new_sock = accept(sock, (struct sockaddr*)&server_addr,
                                 (socklen_t*)&len)) <0)
             exit_perr("accept failed");
    
-         printf("\n\n\nNew client \n");
-         int ps_sock; // proxy server sock
-         struct sockaddr_in ps_server_addr ; 
+         //printf("\n\n\nNew client \n");
          if ( (ps_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
          {
             exit_perr("Unable to create pssocket");
@@ -270,15 +222,11 @@ int main(int argc, char **argv)
          ps_server_addr.sin_addr.s_addr = inet_addr(destaddr);
          ps_server_addr.sin_port = htons(dport);
    
-   //      if (inet_pton(AF_INET, destaddr, &ps_server_addr.sin_addr) <=0)
-   //         exit_perr("Invalid address");
-   
          if (connect(ps_sock, (const struct sockaddr*)&ps_server_addr, sizeof(ps_server_addr)))
             exit_perr("Connection failed");
    
-         fcntl(ps_sock, F_SETFL, fcntl(ps_sock, F_GETFL) | O_NONBLOCK);
-         fcntl(new_sock, F_SETFL, fcntl(new_sock, F_GETFL) | O_NONBLOCK);
-         while (1){
+         while (1)
+         {
             FD_ZERO(&dset);
             FD_SET(ps_sock, &dset);
             FD_SET(new_sock, &dset);
@@ -287,53 +235,29 @@ int main(int argc, char **argv)
    
             if (FD_ISSET(ps_sock, &dset))
             {
-               while(1)
+               bytes = read(ps_sock, buffer, MAX_BUFFER_SIZE);
+               if (bytes == 0)
                {
-                  bytes = read(ps_sock, buffer, MAX_BUFFER_SIZE);
-                  if (bytes > 0)
-                  {
-                     send(new_sock, buffer, bytes, 0);
-                     buffer[bytes] = 0;
-                     printf("bytes = %d, Right -> Left : %s\n", bytes, buffer);
-                  }
-                  if (bytes < MAX_BUFFER_SIZE)
-                     break;
+                  break;
                }
+               send(new_sock, buffer, bytes, 0);
+               buffer[bytes] = 0;
+               printf("bytes = %d, Right -> Left : %s\n", bytes, buffer);
             }
    
             if (FD_ISSET(new_sock, &dset))
             {
-               while(1)
+               bytes = read(new_sock, buffer, MAX_BUFFER_SIZE);
+               if (bytes == 0)
                {
-                  bytes = read(new_sock, buffer, MAX_BUFFER_SIZE);
-                  if (bytes > 0)
-                  {
-                     send(ps_sock, buffer, bytes, 0);
-                     buffer[bytes] = 0;
-                     printf("bytes = %d, Left -> Right : %s\n", bytes, buffer);
-                  }
-                  if (bytes < MAX_BUFFER_SIZE)
-                     break;
+                  break;
                }
+               send(ps_sock, buffer, bytes, 0);
+               buffer[bytes] = 0;
+               printf("bytes = %d, Left -> Right : %s\n", bytes, buffer);
             }
          }
    
-   /* 
-         printf("\n\n\nNew client \n");
-         char buffer[MAX_BUFFER_SIZE] = {0};
-         char* hello = "Hello from server";
-         int valread; 
-   
-         while ((valread = recv(new_sock, buffer, MAX_BUFFER_SIZE, 0)) > 0)
-         {
-             printf("%s", buffer);
-             send(new_sock, hello, strlen(hello), 0);
-             //printf("Hello message sent\n");
-         }
-   
-         if (valread < 0)
-            exit_perr("recv failed");
-   */
          close(ps_sock);
          close(new_sock);
       }
