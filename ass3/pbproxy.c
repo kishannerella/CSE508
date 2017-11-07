@@ -15,6 +15,7 @@
 
 
 #define MAX_BUFFER_SIZE 1024
+#define MAX_KEY_SIZE 4096
 
 struct ctr_state
 {
@@ -80,7 +81,7 @@ int main(int argc, char **argv)
    int   dport = -1;
    char* destaddr = NULL;
    char* keyfile = NULL;
-   char  key[4097] = {0};
+   char  key[MAX_KEY_SIZE+1] = {0};
    int   opt;
    int   client = 1;
    char* temp;
@@ -142,7 +143,8 @@ int main(int argc, char **argv)
       {
          exit_err("Unable to open key file");
       }
-      fgets(key, 4096, fp);
+      fgets(key, MAX_KEY_SIZE, fp);
+      fclose(fp);
    }
 
    if (!destaddr)

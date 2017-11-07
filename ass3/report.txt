@@ -1,0 +1,40 @@
+******************************* INPUT *****************************************
+Usage: pbproxy [-l port] -k keyfile destination port
+Example test case :
+  When run from the directory with pbproxy executable
+  Server -> ./pbproxy -k key -l 2222 localhost 22 
+  Client -> ssh -o "ProxyCommand ./pbproxy -k key localhost 2222" localhost
+
+* Running  'make' would produce pbproxy executable.
+* keyfile, destination and port are mandatory
+* destination and port MUST be given at the end and in that order. 
+  The other options can be provided in any order.
+* destination must be an ipaddress. Domain names won't be resolved
+* The keyfile should be either in the same directory as pbproxy or a full
+  path needs to be provided.
+***************************** DEV-ENV *****************************************
+Ubuntu 14.04 (Linux 3.19.0-25-generic x86_64)
+gcc version 4.8.4 (Ubuntu 4.8.4-2ubuntu1~14.04)
+
+******************************* IMPLEMENTATION ********************************
+- I assume that the key is present in the first line of the keyfile.
+- The client pbproxy connects to the destination using socket(SOCK1) and then
+  multiplexes to read between STDIN and the SOCK1. Bytes read from SOCK1 are
+  sent to STDOUT and bytes from STDIN are sent to SOCK1.
+- The server pbproxy listens on a port for a client to connect. When a client 
+  connects through a socket(SOCK2), a new connection is made to the server using
+  a socket(SOCK3). Similar to the client, the read multiplexing happens betwen
+  SOCK2 and SOCK3. Bytes read from SOCK2 and sent to SOCK3 and vice-versa.
+- select() is used for I/O multiplexing.
+- All the above explanation is without encryption. I used openssl library to
+  do AES CTR 128-bit encryption. When a pbproxy client connects to the 
+  pbproxy server, the first message sent through SOCK1 is the Initialization
+  Vector(IV). Similarly, the first message the pbproxy server sends to the 
+  client through SOCK2 is a different random IV for the communication between
+  server and client.
+- Information passed over SOCK1 and SOCK2 is encrypted.
+
+******************************** REFERENCES ***********************************
+http://www.geeksforgeeks.org/socket-programming-cc/
+http://www.csd.uoc.gr/~hy556/material/tutorials/cs556-3rd-tutorial.pdf
+https://stackoverflow.com/questions/3141860/aes-ctr-256-encryption-mode-of-operation-on-openssl
