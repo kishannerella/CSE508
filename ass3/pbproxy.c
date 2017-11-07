@@ -8,12 +8,28 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <openssl/aes.h>
 /*
  * pbproxy [-l port] -k keyfile destination port
  */
 
 
-#define MAX_BUFFER_SIZE 10
+#define MAX_BUFFER_SIZE 1024
+
+struct ctr_state
+{
+   unsigned char ivec[16];
+   unsigned int num;
+   unsigned char ecount[16];
+};
+
+int init_ctr(struct ctr_state* state, unsigned char iv[8])
+{
+   state->num = 0;
+   memset(state->ecount, 0, 16);
+   memset(state->ivec+8,0,8);
+   memcpy(state->ivec, iv, 8);
+}
 
 void print_app_usage()
 {
@@ -64,10 +80,12 @@ int main(int argc, char **argv)
    int   dport = -1;
    char* destaddr = NULL;
    char* keyfile = NULL;
+   char  key[4097] = {0};
    int   opt;
    int   client = 1;
    char* temp;
    char  buffer[MAX_BUFFER_SIZE+1] = {0};
+   char  ebuf[MAX_BUFFER_SIZE+1] = {0};
 
    while ((opt = getopt(argc, argv, "l:k:")) != -1){
       switch (opt){
@@ -116,6 +134,16 @@ int main(int argc, char **argv)
    {
       exit_err("keyfile is mandatory");
    }
+   else
+   {
+      FILE* fp = fopen(keyfile, "r");
+      int count = 0;
+      if (fp == NULL)
+      {
+         exit_err("Unable to open key file");
+      }
+      fgets(key, 4096, fp);
+   }
 
    if (!destaddr)
    {
@@ -127,7 +155,7 @@ int main(int argc, char **argv)
       exit_err("destination_port is mandatory");
    }
 
-   printf("keyfile - %s, destip = %s, lport = %d, dport = %d\n", keyfile, destaddr, lport, dport);
+   //printf("key - %s, destip = %s, lport = %d, dport = %d\n", key, destaddr, lport, dport);
 
    /********* Input parsing done *************/
 
@@ -138,6 +166,11 @@ int main(int argc, char **argv)
       int bytes;
       struct sockaddr_in server_addr ; 
       fd_set dset;
+      struct ctr_state en_state;
+      struct ctr_state dec_state;
+      AES_KEY aes_key;
+      unsigned char e_iv[8];
+      unsigned char d_iv[8];
 
       if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
       {
@@ -149,10 +182,30 @@ int main(int argc, char **argv)
       server_addr.sin_family = AF_INET;
       server_addr.sin_addr.s_addr = inet_addr(destaddr);
       server_addr.sin_port = htons(dport);
-   
+  
+      /* Connect to the pbproxy server */ 
       if (connect(sock, (const struct sockaddr*)&server_addr, sizeof(server_addr)))
          exit_perr("Connection failed");
-   
+
+      /* Exchange IV with the pb-server
+       * pb-client sends an IV to the pb-server
+       * and waits for the IV for the stream from the other direction */   
+      if (!RAND_bytes(e_iv, 8))
+         exit_err("Unable to use RAND");
+
+      /* Send IV to the server*/
+      write(sock, e_iv, 8);
+      /* Receive IV to the server*/
+      if (read(sock,d_iv, 8) != 8)
+         exit_err("IV exchange failed");
+      
+      init_ctr(&en_state, e_iv);
+      init_ctr(&dec_state, d_iv);
+
+      if (AES_set_encrypt_key(key, 128, &aes_key) < 0)
+         exit_err("AES_set_encrypt_key fail");
+
+      /* Start talking */
       while (1){
          FD_ZERO(&dset);
          FD_SET(STDIN_FILENO, &dset);
@@ -164,17 +217,23 @@ int main(int argc, char **argv)
             bytes = read(sock, buffer, MAX_BUFFER_SIZE);
             if (bytes == 0)
                break;
-            write(STDOUT_FILENO, buffer, bytes);
+
+            AES_ctr128_encrypt(buffer, ebuf, bytes, 
+                      &aes_key, dec_state.ivec, dec_state.ecount, 
+                      &dec_state.num);
+            write(STDOUT_FILENO, ebuf, bytes);
          }
    
          if (FD_ISSET(STDIN_FILENO, &dset))
          {
             bytes = read(STDIN_FILENO, buffer, MAX_BUFFER_SIZE);
             if (bytes == 0)
-            { 
                break;
-            }
-            write(sock, buffer, bytes);
+
+            AES_ctr128_encrypt(buffer, ebuf, bytes, 
+                      &aes_key, en_state.ivec, en_state.ecount, 
+                      &en_state.num);
+            write(sock, ebuf, bytes);
          }
       }
       close(sock);
@@ -188,6 +247,11 @@ int main(int argc, char **argv)
       int ps_sock; // proxy server sock
       struct sockaddr_in ps_server_addr ; 
       fd_set dset;
+      struct ctr_state en_state;
+      struct ctr_state dec_state;
+      AES_KEY aes_key;
+      unsigned char e_iv[8];
+      unsigned char d_iv[8];
 
       if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
       {
@@ -215,7 +279,23 @@ int main(int argc, char **argv)
          if ((new_sock = accept(sock, (struct sockaddr*)&server_addr,
                                 (socklen_t*)&len)) <0)
             exit_perr("accept failed");
-   
+ 
+         /* Exchange crypto-information */ 
+         if (!RAND_bytes(e_iv, 8))
+            exit_err("Unable to use RAND");
+  
+         /* Send IV to the client */ 
+         write(new_sock, e_iv, 8);
+         /* Receive IV from the client */ 
+         if (read(new_sock,d_iv, 8) != 8)
+            exit_err("IV exchange failed");
+         
+         init_ctr(&en_state, e_iv);
+         init_ctr(&dec_state, d_iv);
+
+         if (AES_set_encrypt_key(key, 128, &aes_key) < 0)
+            exit_err("AES_set_encrypt_key fail");
+
          //printf("\n\n\nNew client \n");
          if ( (ps_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
          {
@@ -246,9 +326,12 @@ int main(int argc, char **argv)
                {
                   break;
                }
-               send(new_sock, buffer, bytes, 0);
-               buffer[bytes] = 0;
-               printf("bytes = %d, Right -> Left : %s\n", bytes, buffer);
+               AES_ctr128_encrypt(buffer, ebuf, bytes, 
+                      &aes_key, en_state.ivec, en_state.ecount, 
+                      &en_state.num);
+               send(new_sock, ebuf, bytes, 0);
+               //ebuf[bytes] = 0;
+               //printf("bytes = %d, Right -> Left : %s\n", bytes, ebuf);
             }
    
             if (FD_ISSET(new_sock, &dset))
@@ -258,9 +341,12 @@ int main(int argc, char **argv)
                {
                   break;
                }
-               send(ps_sock, buffer, bytes, 0);
-               buffer[bytes] = 0;
-               printf("bytes = %d, Left -> Right : %s\n", bytes, buffer);
+               AES_ctr128_encrypt(buffer, ebuf, bytes, 
+                      &aes_key, dec_state.ivec, dec_state.ecount, 
+                      &dec_state.num);
+               send(ps_sock, ebuf, bytes, 0);
+               //ebuf[bytes] = 0;
+               //printf("bytes = %d, Left -> Right : %s\n", bytes, ebuf);
             }
          }
    
