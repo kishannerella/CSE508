@@ -12,12 +12,14 @@ Example test case :
 * destination must be an ipaddress. Domain names won't be resolved
 * The keyfile should be either in the same directory as pbproxy or a full
   path needs to be provided.
+* The key inside the keyfile must be in HEXADECIMAL format and since I'm using
+   128-bit AES encryption, the key should be 32-character long 
+
 ***************************** DEV-ENV *****************************************
 Ubuntu 14.04 (Linux 3.19.0-25-generic x86_64)
 gcc version 4.8.4 (Ubuntu 4.8.4-2ubuntu1~14.04)
 
 ******************************* IMPLEMENTATION ********************************
-- I assume that the key is present in the first line of the keyfile.
 - The client pbproxy connects to the destination using socket(SOCK1) and then
   multiplexes to read between STDIN and the SOCK1. Bytes read from SOCK1 are
   sent to STDOUT and bytes from STDIN are sent to SOCK1.
