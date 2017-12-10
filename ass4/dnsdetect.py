@@ -48,7 +48,7 @@ def detect(pkt):
 	if (pkt.haslayer(DNSQR) and
 		pkt[DNS].qr == 1 and 
 		pkt[DNSQR].qtype == 1):
-		#print data
+		#print pkt.summary()
 		for prevPkt in data:
 			if (pkt[DNS].id == prevPkt[DNS].id and
 				pkt[IP].dst == prevPkt[IP].dst and
@@ -75,7 +75,7 @@ if args.expression:
 	exp = " ".join(args.expression)
 	bpf = bpf + " and " + "(" + exp + ")" 
 #print bpf
-print args.r
+#print args.r
 if args.i is None:
 	if args.r is None:
 		sniff(filter=bpf, prn=detect)

