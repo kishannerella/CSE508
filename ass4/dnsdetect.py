@@ -23,7 +23,7 @@ def printPackets(pkt1, pkt2):
 	l2 = []
 	for i in range(0, pkt2[DNS].ancount):
 		l2.append(pkt2[DNSRR][i].rdata)
-	print "TXID 0x" + format(pkt1[DNS].id, "X") + \
+	print "TXID " + format(pkt1[DNS].id, "X") + \
 	      "  Request " + pkt1[DNSQR].qname
 	print "Answer1  " + str(l1)
 	print "Answer2  " + str(l2)
@@ -33,7 +33,7 @@ def detect(pkt):
 	if (pkt.haslayer(DNSQR) and
 		pkt[DNS].qr == 1 and 
 		pkt[DNSQR].qtype == 1):
-		print len(data)
+		print 
 		for prevPkt in data:
 			if (pkt[DNS].id == prevPkt[DNS].id and
 				pkt[IP].dst == prevPkt[IP].dst and
@@ -61,6 +61,12 @@ if args.expression:
 	bpf = bpf + " and " + "(" + exp + ")" 
 #print bpf
 if args.i is None:
-	sniff(filter=bpf, prn=detect)
+	if args.r is None:
+		sniff(filter=bpf, prn=detect)
+	else:
+		sniff(filter=bpf, prn=detect, offline=args.r)
 else:
-	sniff(filter=bpf, iface=args.i, prn=detect)
+	if args.r is None:
+		sniff(filter=bpf, iface=args.i, prn=detect)
+	else:
+		sniff(filter=bpf, iface=args.i, prn=detect, offline=args.r)
